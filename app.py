@@ -5,8 +5,13 @@ import os
 import shutil
 import threading
 import time
+import sys
+import logging
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(sys._MEIPASS, 'templates') if hasattr(sys, '_MEIPASS') else 'templates')
+
+# Loglama ayarları
+logging.basicConfig(level=logging.DEBUG)
 
 def get_shortcode_from_url(url):
     match = re.search(r'instagram\.com/(p|reel)/([^/?#&]+)', url)
@@ -42,8 +47,27 @@ def index():
         video_url = request.form['url']
         try:
             directory = download_instagram_video(video_url)
-            video_file = next(f for f in os.listdir(directory) if f.endswith('.mp4'))
+            app.logger.debug(f'Download directory: {directory}')
+            
+            # İndirilen dosyaların kontrolü
+            downloaded_files = os.listdir(directory)
+            app.logger.debug(f'Downloaded files: {downloaded_files}')
+            
+            video_file = next(f for f in downloaded_files if f.endswith('.mp4'))
             video_path = os.path.join(directory, video_file)
+            app.logger.debug(f'Video path: {video_path}')
+
+            # Geçici dizin ve dosya yollarını kontrol et
+            temp_dir = sys._MEIPASS if hasattr(sys, '_MEIPASS') else 'No MEIPASS'
+            app.logger.debug(f'Temporary directory: {temp_dir}')
+            app.logger.debug(f'Current working directory: {os.getcwd()}')
+
+            # Geçici dizine taşıma
+            if hasattr(sys, '_MEIPASS'):
+                temp_video_path = os.path.join(temp_dir, os.path.basename(video_path))
+                shutil.move(video_path, temp_video_path)
+                video_path = temp_video_path
+                app.logger.debug(f'Moved video path: {video_path}')
 
             @after_this_request
             def remove_file(response):
@@ -56,8 +80,9 @@ def index():
 
             return send_file(video_path, as_attachment=True)
         except Exception as e:
+            app.logger.error(f'Error: {e}')
             return str(e), 500
     return render_template('index.html')
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=80)
+    app.run(debug=False, host='0.0.0.0', port=5000)
